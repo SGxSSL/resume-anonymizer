@@ -35,6 +35,8 @@ Given this resume text:
 - Skills (array of strings)
 - Experience (array of objects: job_title, company, dates, description)
 - Education (array of objects: degree, school, dates, description)
+- Projects (array of objects: title, description, technologies, dates)
+- Achievements (array of strings)
 
 2. Do not include any phone number, email, address, links, or personal identifiers other than the name.
 
@@ -43,21 +45,29 @@ Given this resume text:
 Return ONLY the JSON.
 """
 
-    # Initialize the Generative Model with the system prompt
-    model = genai.GenerativeModel(
-        model_name='gemini-2.5-pro',
-        system_instruction=system_prompt
-    )
-
-    # Generate content with the specified JSON output format
-    response = model.generate_content(
-        user_prompt,
-        generation_config={"response_mime_type": "application/json"}
-    )
-
-    # Return parsed JSON from the model's response text
+    # Initialize the Generative Model
+    model = genai.GenerativeModel('gemini-2.5-pro')
+    
     try:
-        return json.loads(response.text)
+        # Generate content with the specified JSON output format
+        response = model.generate_content(
+            [system_prompt, user_prompt],
+            generation_config={"temperature": 0.1}  # Lower temperature for more consistent JSON output
+        )
+        
+        # Extract and parse the JSON from the response
+        # Clean the response text to ensure it only contains the JSON part
+        response_text = response.text.strip()
+        if response_text.startswith("```json"):
+            response_text = response_text[7:]  # Remove ```json
+        if response_text.endswith("```"):
+            response_text = response_text[:-3]  # Remove ```
+        
+        response_text = response_text.strip()
+        return json.loads(response_text)
+        
     except json.JSONDecodeError as e:
-        # Optionally, log the error or the response for debugging
+        # Log the error and the response for debugging
         raise ValueError(f"Failed to parse JSON from Gemini response: {e}\nResponse text: {response.text}")
+    except Exception as e:
+        raise ValueError(f"Error while processing with Gemini API: {str(e)}")
