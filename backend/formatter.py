@@ -1,7 +1,8 @@
 # formatter.py
 from docx import Document
-from docx.shared import Pt, RGBColor
+from docx.shared import Pt, RGBColor, Inches, Cm
 from docx.enum.text import WD_PARAGRAPH_ALIGNMENT
+from docx.enum.table import WD_ALIGN_VERTICAL
 import os
 
 TEMPLATE_DIR = os.path.join(os.path.dirname(__file__), "templates")
@@ -17,21 +18,40 @@ def format_resume_from_json(data: dict, output_path: str, template_filename: str
         section.right_margin = Pt(72)   # 1 inch
         section.top_margin = Pt(72)     # 1 inch
         section.bottom_margin = Pt(72)  # 1 inch
+
+    # Create a table for the header (1 row, 2 columns)
+    header_table = doc.add_table(rows=1, cols=2)
+    header_table.alignment = WD_PARAGRAPH_ALIGNMENT.CENTER
+    header_table.allow_autofit = True
     
-    # Add the name as a title with extra spacing
-    name_paragraph = doc.add_paragraph()
+    from docx.enum.table import WD_ALIGN_VERTICAL
+    
+    # Left cell for name
+    name_cell = header_table.cell(0, 0)
+    name_cell.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
+    name_paragraph = name_cell.paragraphs[0]
     name_run = name_paragraph.add_run(data.get("Name", ""))
     name_run.bold = True
     name_run.font.size = Pt(20)
-    name_paragraph.alignment = WD_PARAGRAPH_ALIGNMENT.CENTER
+    name_paragraph.alignment = WD_PARAGRAPH_ALIGNMENT.LEFT
+    
+    # Right cell for logo
+    logo_cell = header_table.cell(0, 1)
+    logo_cell.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
+    logo_paragraph = logo_cell.paragraphs[0]
+    logo_paragraph.alignment = WD_PARAGRAPH_ALIGNMENT.RIGHT
+    
+    # Add the logo
+    logo_path = os.path.join(TEMPLATE_DIR, "company_logo.png")
+    if os.path.exists(logo_path):
+        logo_run = logo_paragraph.add_run()
+        logo_run.add_picture(logo_path, width=Inches(1.0))  # Adjust size as needed
+    
+    # Add spacing after header
+    doc.add_paragraph()
+    doc.add_paragraph()
     
     # Add extra spacing after name
-    doc.add_paragraph()
-    doc.add_paragraph()
-    
-    # Add a line break
-    doc.add_paragraph()
-
     if summary := data.get("Summary"):
         heading = doc.add_paragraph()
         heading_run = heading.add_run("Professional Summary")
@@ -90,9 +110,16 @@ def format_resume_from_json(data: dict, output_path: str, template_filename: str
             p.add_run(f" ({exp['dates']})")
             
             # Description with bullet points
-            desc_lines = exp['description'].split('\n')
+            description = exp.get('description', '')
+            if isinstance(description, list):
+                desc_lines = description
+            elif isinstance(description, str):
+                desc_lines = description.split('\n')
+            else:
+                desc_lines = []
+                
             for line in desc_lines:
-                if line.strip():
+                if isinstance(line, str) and line.strip():
                     bullet_p = doc.add_paragraph(style='List Bullet')
                     bullet_p.add_run(line.strip())
             

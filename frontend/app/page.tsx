@@ -6,10 +6,51 @@ export default function Home() {
   const [files, setFiles] = useState<File[]>([])
   const [uploading, setUploading] = useState(false)
   const [downloadUrls, setDownloadUrls] = useState<string[]>([])
+  const [progress, setProgress] = useState<{[key: string]: {
+    status: 'pending' | 'processing' | 'completed' | 'error',
+    url?: string
+  }}>({})
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
       setFiles(Array.from(e.target.files))
+    }
+  }
+
+  const processFile = async (file: File) => {
+    const formData = new FormData()
+    formData.append('file', file)
+    
+    setProgress(prev => ({
+      ...prev,
+      [file.name]: { status: 'processing' }
+    }))
+
+    try {
+      const response = await fetch('http://localhost:8000/anonymize-single', {
+        method: 'POST',
+        body: formData,
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to anonymize resume')
+      }
+
+      const data = await response.json()
+      
+      setProgress(prev => ({
+        ...prev,
+        [file.name]: { status: 'completed', url: data.downloadUrl }
+      }))
+      
+      return data.downloadUrl
+    } catch (error) {
+      console.error('Error processing file:', file.name, error)
+      setProgress(prev => ({
+        ...prev,
+        [file.name]: { status: 'error' }
+      }))
+      return null
     }
   }
 
@@ -18,29 +59,17 @@ export default function Home() {
     if (files.length === 0) return
 
     setUploading(true)
-    const formData = new FormData()
-    files.forEach((file) => {
-      formData.append('files', file)
+    const newProgress: {[key: string]: {status: 'pending' | 'processing' | 'completed' | 'error', url?: string}} = {}
+    files.forEach(file => {
+      newProgress[file.name] = { status: 'pending' }
     })
+    setProgress(newProgress)
 
-    try {
-      const response = await fetch('http://localhost:8000/anonymize', {
-        method: 'POST',
-        body: formData,
-      })
-
-      if (!response.ok) {
-        throw new Error('Failed to anonymize resumes')
-      }
-
-      const data = await response.json()
-      setDownloadUrls(data.downloadUrls)
-    } catch (error) {
-      console.error('Error:', error)
-      alert('Failed to process resumes')
-    } finally {
-      setUploading(false)
-    }
+    // Process all files concurrently
+    const processPromises = files.map(file => processFile(file))
+    const urls = (await Promise.all(processPromises)).filter(url => url !== null) as string[]
+    setDownloadUrls(urls)
+    setUploading(false)
   }
 
   return (
@@ -52,13 +81,13 @@ export default function Home() {
           <form onSubmit={handleSubmit} className="space-y-6">
             <div className="space-y-2">
               <label htmlFor="files" className="block text-sm font-medium text-gray-700 dark:text-gray-200">
-                Upload Resumes (DOCX format)
+                Upload Resumes (PDF or DOCX format)
               </label>
               <input
                 type="file"
                 id="files"
                 multiple
-                accept=".docx"
+                accept=".pdf,.docx"
                 onChange={handleFileChange}
                 className="block w-full text-sm text-gray-500 dark:text-gray-300
                   file:mr-4 file:py-2 file:px-4
@@ -85,19 +114,39 @@ export default function Home() {
             </div>
           </form>
 
-          {downloadUrls.length > 0 && (
+          {Object.keys(progress).length > 0 && (
             <div className="mt-8">
-              <h2 className="text-lg font-medium mb-4">Processed Resumes:</h2>
-              <ul className="space-y-2">
-                {downloadUrls.map((url, index) => (
-                  <li key={index}>
-                    <a
-                      href={url}
-                      download
-                      className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 underline"
-                    >
-                      Download Anonymized Resume {index + 1}
-                    </a>
+              <h2 className="text-lg font-medium mb-4">Resume Processing Status:</h2>
+              <ul className="space-y-3">
+                {Object.entries(progress).map(([fileName, status]) => (
+                  <li key={fileName} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700 rounded">
+                    <div className="flex items-center space-x-3">
+                      <span className={`w-2 h-2 rounded-full ${
+                        status.status === 'pending' ? 'bg-gray-400' :
+                        status.status === 'processing' ? 'bg-blue-500 animate-pulse' :
+                        status.status === 'completed' ? 'bg-green-500' :
+                        'bg-red-500'
+                      }`} />
+                      <span className="text-sm">{fileName}</span>
+                    </div>
+                    {status.status === 'completed' && status.url && (
+                      <a
+                        href={status.url}
+                        download
+                        className="text-sm text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 underline"
+                      >
+                        Download
+                      </a>
+                    )}
+                    {status.status === 'error' && (
+                      <span className="text-sm text-red-500">Failed to process</span>
+                    )}
+                    {status.status === 'processing' && (
+                      <span className="text-sm text-blue-500">Processing...</span>
+                    )}
+                    {status.status === 'pending' && (
+                      <span className="text-sm text-gray-500">Pending...</span>
+                    )}
                   </li>
                 ))}
               </ul>
@@ -106,5 +155,5 @@ export default function Home() {
         </div>
       </div>
     </main>
-  );
+  )
 }

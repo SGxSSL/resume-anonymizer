@@ -11,20 +11,6 @@ from docx import Document
 from dotenv import load_dotenv
 from typing import List
 import json
-import logging
-from datetime import datetime
-import time
-
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s [%(levelname)s] %(message)s',
-    handlers=[
-        logging.FileHandler('resume_anonymizer.log'),
-        logging.StreamHandler()
-    ]
-)
-logger = logging.getLogger(__name__)
 
 # Load environment variables from .env file
 load_dotenv()
@@ -56,86 +42,61 @@ async def process_single_file(file: UploadFile) -> dict:
     """
     Process a single resume file and return its download URL
     """
-    start_time = time.time()
     file_extension = os.path.splitext(file.filename)[1].lower()
-    logger.info(f"Starting to process file: {file.filename} (Type: {file_extension})")
-
     if file_extension not in [".pdf", ".docx"]:
-        logger.error(f"Invalid file type: {file_extension} for file {file.filename}")
         raise HTTPException(status_code=400, detail=f"Unsupported file type for {file.filename}. Please upload .pdf or .docx files only.")
 
     file_id = str(uuid.uuid4())
     input_path = os.path.join(UPLOAD_DIR, f"{file_id}{file_extension}")
-    logger.info(f"Generated file ID: {file_id}")
     
     try:
         # Save the uploaded file temporarily
-        logger.info(f"Saving uploaded file to temporary location: {input_path}")
         with open(input_path, "wb") as f:
             content = await file.read()
             f.write(content)
-        logger.info(f"File saved successfully: {input_path}")
 
         # Extract text from the saved file
         text = ""
         if file_extension == ".pdf":
-            logger.info(f"Processing PDF file: {file.filename}")
             try:
                 with pdfplumber.open(input_path) as pdf:
                     text = "\n".join(page.extract_text() for page in pdf.pages if page.extract_text())
-                    logger.info(f"Successfully extracted {len(text)} characters from PDF")
             except Exception as e:
-                logger.error(f"PDF extraction failed for {file.filename}: {str(e)}")
                 raise HTTPException(status_code=500, detail=f"Failed to extract text from PDF: {e}")
         elif file_extension == ".docx":
-            logger.info(f"Processing DOCX file: {file.filename}")
             try:
                 doc = Document(input_path)
                 text = "\n".join(p.text for p in doc.paragraphs)
-                logger.info(f"Successfully extracted {len(text)} characters from DOCX")
             except Exception as e:
-                logger.error(f"DOCX extraction failed for {file.filename}: {str(e)}")
                 raise HTTPException(status_code=500, detail=f"Failed to extract text from DOCX: {e}")
         
         if not text.strip():
-            logger.error(f"No text content found in file: {file.filename}")
             raise HTTPException(status_code=400, detail=f"Could not extract any text from {file.filename}")
 
         # Parse with Gemini
-        logger.info(f"Starting AI model processing for {file.filename}")
         try:
             parsed_data = parse_resume_to_json_gemini(text)
-            logger.info("AI model processing completed successfully")
-            logger.debug(f"Parsed data: {json.dumps(parsed_data, indent=2)}")
         except Exception as e:
-            logger.error(f"AI model processing failed: {str(e)}")
             raise HTTPException(status_code=500, detail=f"Failed to parse {file.filename} with the AI model: {e}")
 
         # Format into new DOCX
         original_filename = os.path.splitext(os.path.basename(file.filename))[0]
         output_filename = f"{file_id}_{original_filename}_anonymized.docx"
         output_path = os.path.join(OUTPUT_DIR, output_filename)
-        logger.info(f"Preparing to create anonymized document: {output_filename}")
         
         try:
-            logger.info(f"Formatting anonymized resume for {file.filename}")
             format_resume_from_json(parsed_data, output_path)
-            processing_time = time.time() - start_time
-            logger.info(f"Successfully processed {file.filename} in {processing_time:.2f} seconds")
             return {
                 "originalName": file.filename,
                 "downloadUrl": f"http://localhost:8000/download/{output_filename}"
             }
         except Exception as e:
-            logger.error(f"Failed to format resume {file.filename}: {str(e)}")
             raise HTTPException(status_code=500, detail=f"Failed to format {file.filename}. Error: {e}")
 
     finally:
         # Clean up the input file
         if os.path.exists(input_path):
-            logger.info(f"Cleaning up temporary file: {input_path}")
             os.remove(input_path)
-            logger.info("Temporary file cleaned up successfully")
 
 @app.post("/anonymize-single", tags=["Resume Processing"])
 async def anonymize_single_resume(file: UploadFile = File(..., description="Resume file in .pdf or .docx format")):
@@ -150,14 +111,10 @@ async def download_file(filename: str):
     """
     Download a processed resume file
     """
-    logger.info(f"Download requested for file: {filename}")
     file_path = os.path.join(OUTPUT_DIR, filename)
-    
     if not os.path.exists(file_path):
-        logger.error(f"File not found: {file_path}")
         raise HTTPException(status_code=404, detail="File not found")
     
-    logger.info(f"Serving file: {file_path}")
     return FileResponse(
         path=file_path,
         filename=filename,
