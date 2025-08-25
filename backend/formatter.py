@@ -194,9 +194,16 @@ def format_resume_from_json(data: dict, output_path: str, template_filename: str
             
             # Description with bullet points
             if desc := project.get('description'):
-                desc_lines = desc.split('\n')
+                # Handle both string and list formats
+                if isinstance(desc, list):
+                    desc_lines = desc
+                elif isinstance(desc, str):
+                    desc_lines = desc.split('\n')
+                else:
+                    desc_lines = []
+                
                 for line in desc_lines:
-                    if line.strip():
+                    if isinstance(line, str) and line.strip():
                         # Keep existing bullet points, add bullets if not present
                         line = line.strip()
                         if not line.startswith('•'):
@@ -211,7 +218,13 @@ def format_resume_from_json(data: dict, output_path: str, template_filename: str
         heading = doc.add_paragraph()
         heading_run = heading.add_run("Achievements")
         heading_run.bold = True
-        heading_run.font.size = Pt(14)
+        heading_run.font.size = Pt(16)
+        heading_run.font.color.rgb = RGBColor(0, 0, 0)
+        
+        # Add double line under the heading
+        heading.paragraph_format.space_after = Pt(0)
+        border_paragraph = doc.add_paragraph("_" * 80)
+        border_paragraph.paragraph_format.space_after = Pt(12)
         
         # Create a bullet list for achievements
         for achievement in achievements:
