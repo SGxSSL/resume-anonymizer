@@ -46,7 +46,7 @@ Return ONLY the JSON.
 """
 
     # Initialize the Generative Model
-    model = genai.GenerativeModel('gemini-2.5-pro')
+    model = genai.GenerativeModel('gemini-2.5-flash')
     
     try:
         # Generate content with the specified JSON output format
@@ -54,6 +54,7 @@ Return ONLY the JSON.
             [system_prompt, user_prompt],
             generation_config={"temperature": 0.1}  # Lower temperature for more consistent JSON output
         )
+        print(response.text)
         
         # Extract and parse the JSON from the response
         # Clean the response text to ensure it only contains the JSON part
